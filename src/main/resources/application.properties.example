@@ -1,0 +1,27 @@
+spring.application.name=FinancePro
+
+spring.jpa.properties.hibernate.dialect = org.hibernate.dialect.PostgreSQLDialect
+spring.jpa.hibernate.ddl-auto=update
+spring.jpa.hibernate.show-sql=true
+spring.datasource.url=jdbc:postgresql://localhost:5432/your_db_name
+spring.datasource.username=your_username
+spring.datasource.password=your_password
+
+spring.security.user.name=your_security_username
+spring.security.user.password=your_security_password
+
+alphavantage.api.base-url=https://www.alphavantage.co/query
+alphavantage.api.key=your_api_key
+stock.quote.use.mock=false
+
+# New properties
+alphavantage.cache.duration=300000
+alphavantage.api.rate-limit=12000
+
+# Enhanced logging
+logging.level.com.finpro.FinancePro=DEBUG
+logging.pattern.console=%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n
+
+# Connection pool settings
+spring.datasource.hikari.connection-timeout=20000
+spring.datasource.hikari.maximum-pool-size=5
