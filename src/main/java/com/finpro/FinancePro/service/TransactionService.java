@@ -63,6 +63,13 @@ public class TransactionService {
         return transactions.stream().map(this::convertToResponseDTO).collect(Collectors.toList());
     }
 
+    //Get transaction by id
+    public TransactionResponseDTO getTransaction(Long id) {
+        Transaction transaction = transactionRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Transaction not found with ID: " + id));
+        return convertToResponseDTO(transaction);
+    }
+
 
     public TransactionResponseDTO createTransaction(CreateTransactionDTO createDTO) {
         // Fetch the user

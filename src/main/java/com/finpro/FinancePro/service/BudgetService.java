@@ -28,19 +28,19 @@ public class BudgetService {
     @Autowired
     private TransactionRepository transactionRepository;
 
-    public BudgetResponseDTO createBudget(CreateBudgetDTO createDTO) {
-        User user = userRepository.findById(createDTO.getUserId())
-                .orElseThrow(() -> new ResourceNotFoundException("User not found with ID " + createDTO.getUserId()));
+    public BudgetResponseDTO createBudget(Long userId, CreateBudgetDTO createDTO) {
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new ResourceNotFoundException("User not found with ID " + userId));
 
         // Check if a budget already exists for the user
-        budgetRepository.findByUserId(createDTO.getUserId()).ifPresent(existingBudget -> {
+        budgetRepository.findByUserId(userId).ifPresent(existingBudget -> {
             throw new InvalidRequestException("A budget already exists for this user.");
         });
 
         Budget budget = new Budget();
         budget.setUser(user);
         budget.setTotalAmount(createDTO.getTotalAmount());
-        budget.setSpentAmount(calculateSpentAmount(user.getId())); // Calculate spent amount
+        budget.setSpentAmount(calculateSpentAmount(userId)); // Calculate spent amount
         budget.setPeriod(createDTO.getPeriod());
 
         Budget savedBudget = budgetRepository.save(budget);
@@ -56,6 +56,12 @@ public class BudgetService {
 
         Budget updatedBudget = budgetRepository.save(budget);
         return convertToResponseDTO(updatedBudget);
+    }
+
+    public boolean isUserAuthorizedForBudget(Long budgetId, Long userId) {
+        Budget budget = budgetRepository.findById(budgetId)
+                .orElseThrow(() -> new ResourceNotFoundException("Budget not found with ID " + budgetId));
+        return budget.getUser().getId().equals(userId);
     }
 
     public BudgetResponseDTO getBudgetByUser(Long userId) {

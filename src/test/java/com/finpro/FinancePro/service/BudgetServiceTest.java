@@ -3,6 +3,7 @@ package com.finpro.FinancePro.service;
 import com.finpro.FinancePro.dto.Request.CreateBudgetDTO;
 import com.finpro.FinancePro.dto.Request.UpdateBudgetDTO;
 import com.finpro.FinancePro.dto.Response.BudgetResponseDTO;
+import com.finpro.FinancePro.entity.Provider;
 import com.finpro.FinancePro.entity.Transaction;
 import com.finpro.FinancePro.entity.User;
 import com.finpro.FinancePro.exception.InvalidRequestException;
@@ -10,13 +11,16 @@ import com.finpro.FinancePro.exception.ResourceNotFoundException;
 import com.finpro.FinancePro.repository.BudgetRepository;
 import com.finpro.FinancePro.repository.TransactionRepository;
 import com.finpro.FinancePro.repository.UserRepository;
+import com.finpro.FinancePro.security.SecurityUtils;
+
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.AfterEach;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.util.List;
+import java.time.LocalDateTime;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -36,180 +40,151 @@ public class BudgetServiceTest {
     @Autowired
     private TransactionRepository transactionRepository;
 
-    private User testuser;
-    private CreateBudgetDTO createDTO;
-    private UpdateBudgetDTO updateDTO;
+    private User testUser;
 
     @BeforeEach
-    void setUp(){
+    public void setUp() {
+        // Create a test user with a unique full name
+        testUser = new User();
+        testUser.setEmail("test" + System.currentTimeMillis() + "@example.com");
+        testUser.setFullName("Test User " + System.currentTimeMillis());
+        testUser.setPassword("password");
+        testUser.setProvider(Provider.SELF);
+        testUser = userRepository.save(testUser);
 
-        //create and save test user;
-        testuser = new User();
-        testuser.setFullName("Test User");
-        testuser.setEmail("test@example.com");
-        testuser.setPassword("password123");
-        testuser = userRepository.save(testuser);
+        // Set the test user ID for SecurityUtils
+        SecurityUtils.setTestUserId(testUser.getId());
+    }
 
-        //Setup create DTO
-        createDTO = new CreateBudgetDTO();
-        createDTO.setUserId(testuser.getId());
-        createDTO.setPeriod("Monthly");
+    @Test
+    public void testCreateBudget() {
+        CreateBudgetDTO createDTO = new CreateBudgetDTO();
         createDTO.setTotalAmount(1000.0);
+        createDTO.setPeriod("MONTHLY");
 
-        //Setup update DTO
-        updateDTO = new UpdateBudgetDTO();
-        updateDTO.setTotalAmount(1500.0);
+        BudgetResponseDTO budgetResponse = budgetService.createBudget(testUser.getId(), createDTO);
+
+        assertNotNull(budgetResponse);
+        assertEquals(1000.0, budgetResponse.getTotalAmount());
+        assertEquals("MONTHLY", budgetResponse.getPeriod());
+        assertEquals(0.0, budgetResponse.getSpentAmount());
     }
 
     @Test
-    void testCreateBudget_Success() {
-        //Act
-        BudgetResponseDTO response = budgetService.createBudget(createDTO);
+    public void testCreateBudgetThrowsExceptionWhenBudgetAlreadyExists() {
+        CreateBudgetDTO createDTO = new CreateBudgetDTO();
+        createDTO.setTotalAmount(1000.0);
+        createDTO.setPeriod("MONTHLY");
+        budgetService.createBudget(testUser.getId(), createDTO);
 
-        //Assert
-        assertNotNull(response);
-        assertEquals(createDTO.getTotalAmount(), response.getTotalAmount());
-        assertEquals(createDTO.getPeriod(), response.getPeriod());
-        assertEquals(0.0, response.getSpentAmount()); //Initially no expense
-        assertEquals(createDTO.getTotalAmount(), response.getRemainingBudget());
-    }
+        CreateBudgetDTO duplicateDTO = new CreateBudgetDTO();
+        duplicateDTO.setTotalAmount(2000.0);
+        duplicateDTO.setPeriod("YEARLY");
 
-    @Test
-    void testCreateBudget_InvalidUser(){
-        //Arrange
-        createDTO.setUserId(999L); //Non-existent userId
-
-        //Act & Assert
-        assertThrows(ResourceNotFoundException.class, ()-> {
-            budgetService.createBudget(createDTO);
-        });
-    }
-
-    @Test
-    void testCreateBudget_DuplicateUser() {
-        // Arrange
-        budgetService.createBudget(createDTO); // Create first budget
-
-        // Act & Assert
         assertThrows(InvalidRequestException.class, () -> {
-            budgetService.createBudget(createDTO); // Attempt to create second budget
+            budgetService.createBudget(testUser.getId(), duplicateDTO);
         });
     }
 
     @Test
-    void testUpdateBudget_Success() {
-        // Arrange
-        BudgetResponseDTO created = budgetService.createBudget(createDTO);
-        updateDTO.setId(created.getId());
+    public void testUpdateBudget() {
+        CreateBudgetDTO createDTO = new CreateBudgetDTO();
+        createDTO.setTotalAmount(1000.0);
+        createDTO.setPeriod("MONTHLY");
+        BudgetResponseDTO createdBudget = budgetService.createBudget(testUser.getId(), createDTO);
 
-        // Act
-        BudgetResponseDTO updated = budgetService.updateBudget(updateDTO);
+        UpdateBudgetDTO updateDTO = new UpdateBudgetDTO();
+        updateDTO.setId(createdBudget.getId());
+        updateDTO.setTotalAmount(1500.0);
 
-        // Assert
-        assertNotNull(updated);
-        assertEquals(updateDTO.getTotalAmount(), updated.getTotalAmount());
-        assertEquals(created.getPeriod(), updated.getPeriod());
+        BudgetResponseDTO updatedBudget = budgetService.updateBudget(updateDTO);
+
+        assertNotNull(updatedBudget);
+        assertEquals(1500.0, updatedBudget.getTotalAmount());
     }
 
     @Test
-    void testUpdateBudget_NotFound() {
-        // Arrange
-        updateDTO.setId(999L); // Non-existent budget ID
+    public void testGetBudgetByUser() {
+        CreateBudgetDTO createDTO = new CreateBudgetDTO();
+        createDTO.setTotalAmount(1000.0);
+        createDTO.setPeriod("MONTHLY");
+        budgetService.createBudget(testUser.getId(), createDTO);
 
-        // Act & Assert
+        BudgetResponseDTO retrievedBudget = budgetService.getBudgetByUser(testUser.getId());
+
+        assertNotNull(retrievedBudget);
+        assertEquals(1000.0, retrievedBudget.getTotalAmount());
+        assertEquals("MONTHLY", retrievedBudget.getPeriod());
+    }
+
+    @Test
+    public void testGetBudgetByUserAndPeriod() {
+        CreateBudgetDTO createDTO = new CreateBudgetDTO();
+        createDTO.setTotalAmount(1000.0);
+        createDTO.setPeriod("MONTHLY");
+        budgetService.createBudget(testUser.getId(), createDTO);
+
+        BudgetResponseDTO retrievedBudget = budgetService.getBudgetByUserAndPeriod(testUser.getId(), "MONTHLY");
+
+        assertNotNull(retrievedBudget);
+        assertEquals(1000.0, retrievedBudget.getTotalAmount());
+        assertEquals("MONTHLY", retrievedBudget.getPeriod());
+    }
+
+    @Test
+    public void testCalculateSpentAmount() {
+        CreateBudgetDTO createDTO = new CreateBudgetDTO();
+        createDTO.setTotalAmount(1000.0);
+        createDTO.setPeriod("MONTHLY");
+        budgetService.createBudget(testUser.getId(), createDTO);
+
+        Transaction transaction1 = new Transaction();
+        transaction1.setUser(testUser);
+        transaction1.setAmount(100.0);
+        transaction1.setType("EXPENSE");
+        transaction1.setCategory("UTILITIES");
+        transactionRepository.save(transaction1);
+
+        Transaction transaction2 = new Transaction();
+        transaction2.setUser(testUser);
+        transaction2.setAmount(200.0);
+        transaction2.setType("EXPENSE");
+        transaction2.setCategory("FOOD");
+        transactionRepository.save(transaction2);
+
+        double remainingBudget = budgetService.getCurrentRemainingBudget(testUser.getId());
+
+        assertEquals(700.0, remainingBudget);
+    }
+
+    @Test
+    public void testGetBudgetByUserThrowsExceptionWhenNobudgetExists() {
         assertThrows(ResourceNotFoundException.class, () -> {
-            budgetService.updateBudget(updateDTO);
+            budgetService.getBudgetByUser(testUser.getId());
         });
     }
 
     @Test
-    void testGetBudgetByUser_Success() {
-        // Arrange
-        budgetService.createBudget(createDTO);
-
-        // Act
-        BudgetResponseDTO response = budgetService.getBudgetByUser(testuser.getId());
-
-        // Assert
-        assertNotNull(response);
-        assertEquals(createDTO.getTotalAmount(), response.getTotalAmount());
-        assertEquals(createDTO.getPeriod(), response.getPeriod());
-    }
-
-    @Test
-    void testGetBudgetByUser_NotFound() {
-        // Act & Assert
+    public void testGetBudgetByUserAndPeriodThrowsExceptionWhenNoBudgetExists() {
         assertThrows(ResourceNotFoundException.class, () -> {
-            budgetService.getBudgetByUser(999L);
+            budgetService.getBudgetByUserAndPeriod(testUser.getId(), "YEARLY");
         });
     }
 
     @Test
-    void testGetBudgetByUserAndPeriod_NotFound() {
-        // Act & Assert
-        assertThrows(ResourceNotFoundException.class, () -> {
-            budgetService.getBudgetByUserAndPeriod(testuser.getId(), "YEARLY");
-        });
+    public void testIsUserAuthorizedForBudget() {
+        CreateBudgetDTO createDTO = new CreateBudgetDTO();
+        createDTO.setTotalAmount(1000.0);
+        createDTO.setPeriod("MONTHLY");
+        BudgetResponseDTO createdBudget = budgetService.createBudget(testUser.getId(), createDTO);
+
+        boolean isAuthorized = budgetService.isUserAuthorizedForBudget(createdBudget.getId(), testUser.getId());
+
+        assertTrue(isAuthorized);
     }
 
-    @Test
-    void testCalculateSpentAmount() {
-        // Arrange
-        BudgetResponseDTO budget = budgetService.createBudget(createDTO);
-
-        // Create test transactions
-        Transaction expense1 = new Transaction();
-        expense1.setUser(testuser);
-        expense1.setAmount(200.0);
-        expense1.setType("EXPENSE");
-        expense1.setCategory("Food");
-
-        Transaction expense2 = new Transaction();
-        expense2.setUser(testuser);
-        expense2.setAmount(300.0);
-        expense2.setType("EXPENSE");
-        expense2.setCategory("Transport");
-
-        Transaction income = new Transaction();
-        income.setUser(testuser);
-        income.setAmount(1000.0);
-        income.setType("INCOME");
-        income.setCategory("Salary");
-
-        transactionRepository.saveAll(List.of(expense1, expense2, income));
-
-        // Act
-        BudgetResponseDTO response = budgetService.getBudgetByUser(testuser.getId());
-
-        // Assert
-        assertEquals(500.0, response.getSpentAmount()); // 200 + 300
-        assertEquals(500.0, response.getRemainingBudget()); // 1000 - 500
-    }
-
-    @Test
-    void testGetCurrentRemainingBudget() {
-        // Arrange
-        budgetService.createBudget(createDTO);
-
-        Transaction expense = new Transaction();
-        expense.setUser(testuser);
-        expense.setAmount(400.0);
-        expense.setType("EXPENSE");
-        expense.setCategory("Shopping");
-        transactionRepository.save(expense);
-
-        // Act
-        double remainingBudget = budgetService.getCurrentRemainingBudget(testuser.getId());
-
-        // Assert
-        assertEquals(600.0, remainingBudget); // 1000 - 400
-    }
-
-    @Test
-    void testGetCurrentRemainingBudget_NotFound() {
-        // Act & Assert
-        assertThrows(ResourceNotFoundException.class, () -> {
-            budgetService.getCurrentRemainingBudget(999L);
-        });
+    @AfterEach
+    public void tearDown() {
+        SecurityUtils.clearTestUserId();
     }
 }

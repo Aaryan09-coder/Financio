@@ -6,6 +6,7 @@ import com.finpro.FinancePro.dto.Response.InvestmentResponseDTO;
 import com.finpro.FinancePro.dto.Response.StockQuoteDTO;
 import com.finpro.FinancePro.entity.Investment;
 import com.finpro.FinancePro.entity.User;
+import com.finpro.FinancePro.exception.CustomAccessDeniedException;
 import com.finpro.FinancePro.exception.ResourceNotFoundException;
 import com.finpro.FinancePro.exception.StockApiException;
 import com.finpro.FinancePro.repository.InvestmentRepository;
@@ -18,6 +19,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.client.RestClientException;
 import org.springframework.web.client.RestTemplate;
 import org.springframework.web.util.UriComponentsBuilder;
@@ -77,10 +79,18 @@ public class InvestmentService {
         return convertToResponseDTO(savedInvestment);
     }
 
-    public InvestmentResponseDTO updateInvestment(Long id, UpdateInvestmentDTO updateDTO){
-        Investment investment = investmentRepository.findById(id)
-                .orElseThrow(()-> new ResourceNotFoundException("Investment not found with ID: " + id));
+    @Transactional
+    public InvestmentResponseDTO updateInvestment(Long userId, UpdateInvestmentDTO updateDTO){
+        Investment investment = investmentRepository.findById(updateDTO.getInvestmentId())
+                .orElseThrow(()-> new ResourceNotFoundException("Investment not found with ID: " + updateDTO.getInvestmentId()));
 
+        // Verify that the investment belongs to the specified user
+        if (!investment.getUser().getId().equals(userId)) {
+            throw new CustomAccessDeniedException("Investment does not belong to the specified user");
+        }
+
+
+        // Update the investment fields if they are present in the DTO
         if (updateDTO.getType() != null) {
             investment.setType(updateDTO.getType());
         }
@@ -88,6 +98,7 @@ public class InvestmentService {
         if (updateDTO.getDescription() != null) {
             investment.setDescription(updateDTO.getDescription());
         }
+
         if (updateDTO.getQuantity() != null) {
             investment.setQuantity(updateDTO.getQuantity());
             // Recalculate amount when quantity changes
@@ -296,6 +307,7 @@ public class InvestmentService {
     private InvestmentResponseDTO convertToResponseDTO(Investment investment) {
         InvestmentResponseDTO dto = new InvestmentResponseDTO();
         dto.setId(investment.getId());
+        dto.setUserId(investment.getUser().getId());
         dto.setType(investment.getType());
         dto.setAmount(investment.getAmount());
         dto.setDescription(investment.getDescription());

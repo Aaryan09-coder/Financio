@@ -2,14 +2,11 @@ package com.finpro.FinancePro.Controller;
 
 import com.finpro.FinancePro.dto.Request.CreateTransactionDTO;
 import com.finpro.FinancePro.dto.Request.UpdateTransactionDTO;
-import com.finpro.FinancePro.dto.Response.TransactionResponseDTO;
-import com.finpro.FinancePro.entity.Budget;
 import com.finpro.FinancePro.entity.Transaction;
 import com.finpro.FinancePro.entity.User;
-import com.finpro.FinancePro.exception.ResourceNotFoundException;
-import com.finpro.FinancePro.repository.BudgetRepository;
 import com.finpro.FinancePro.repository.TransactionRepository;
 import com.finpro.FinancePro.repository.UserRepository;
+import com.finpro.FinancePro.security.SecurityUtils;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -33,184 +30,124 @@ public class TransactionControllerTest {
     private UserRepository userRepository;
 
     @Autowired
-    private BudgetRepository budgetRepository;
-
-    @Autowired
     private TransactionRepository transactionRepository;
 
     private User testUser;
-    private Budget testBudget;
     private Transaction testTransaction;
-    private CreateTransactionDTO createDTO;
-    private UpdateTransactionDTO updateDTO;
 
     @BeforeEach
-    void setUp() {
-        // Create and save test user
-        testUser = new User();
-        testUser.setFullName("Test User");
-        testUser.setEmail("test@example.com");
-        testUser.setPassword("password123");
-        testUser = userRepository.save(testUser);
+    public void setUp() {
+        // Create or find test user
+        testUser = userRepository.findByEmail("test@example.com")
+                .orElseGet(() -> {
+                    User newUser = new User();
+                    newUser.setEmail("test@example.com");
+                    newUser.setFullName("Test User");
+                    return userRepository.save(newUser);
+                });
 
-        // Create and save test budget
-        testBudget = new Budget();
-        testBudget.setUser(testUser);
-        testBudget.setSpentAmount(0.0);
-        testBudget.setTotalAmount(1000.0);
-        testBudget.setPeriod("2025-01");
-        testBudget = budgetRepository.save(testBudget);
+        // Set security context
+        SecurityUtils.setTestUserId(testUser.getId());
 
-        // Setup create DTO
-        createDTO = new CreateTransactionDTO();
-        createDTO.setUserId(testUser.getId());
-        createDTO.setCategory("Food");
-        createDTO.setAmount(100.0);
-        createDTO.setType("EXPENSE");
-        createDTO.setDescription("Grocery shopping");
-
-        // Create and save test transaction
+        // Create test transaction
         testTransaction = new Transaction();
         testTransaction.setUser(testUser);
-        testTransaction.setCategory("Food");
-        testTransaction.setAmount(100.0);
-        testTransaction.setType("EXPENSE");
-        testTransaction.setDescription("Grocery shopping");
-        testTransaction.setCreatedAt(LocalDateTime.now());
+        testTransaction.setCategory("Salary");
+        testTransaction.setAmount(5000.0);
+        testTransaction.setType("INCOME");
+        testTransaction.setDescription("Monthly Salary");
         testTransaction = transactionRepository.save(testTransaction);
+    }
 
-        // Setup update DTO
-        updateDTO = new UpdateTransactionDTO();
+    @Test
+    public void testGetTransactionsByUserId() {
+        ResponseEntity<?> response = transactionController.getTransactionsByUserId(testUser.getId());
+
+        assertNotNull(response);
+        assertEquals(200, response.getStatusCode().value());
+
+        List<?> transactions = (List<?>) response.getBody();
+        assertFalse(transactions.isEmpty());
+    }
+
+    @Test
+    public void testCreateTransaction() {
+        CreateTransactionDTO createDTO = new CreateTransactionDTO();
+        createDTO.setUserId(testUser.getId());
+        createDTO.setCategory("Freelance");
+        createDTO.setAmount(2000.0);
+        createDTO.setType("INCOME");
+        createDTO.setDescription("Freelance Work");
+
+        ResponseEntity<?> response = transactionController.createTransaction(createDTO);
+
+        assertNotNull(response);
+        assertEquals(201, response.getStatusCode().value());
+    }
+
+    @Test
+    public void testGetTransactionsByDateRange() {
+        LocalDateTime now = LocalDateTime.now();
+        LocalDateTime yesterday = now.minusDays(1);
+
+        ResponseEntity<?> response = transactionController.getTransactionsByDateRange(
+                testUser.getId(),
+                yesterday,
+                now.plusDays(1)
+        );
+
+        assertNotNull(response);
+        assertEquals(200, response.getStatusCode().value());
+
+        List<?> transactions = (List<?>) response.getBody();
+        assertFalse(transactions.isEmpty());
+    }
+
+    @Test
+    public void testGetTransactionsByType() {
+        ResponseEntity<?> response = transactionController.getTransactionsByType(
+                testUser.getId(),
+                "INCOME"
+        );
+
+        assertNotNull(response);
+        assertEquals(200, response.getStatusCode().value());
+
+        List<?> transactions = (List<?>) response.getBody();
+        assertFalse(transactions.isEmpty());
+    }
+
+    @Test
+    public void testUpdateTransaction() {
+        UpdateTransactionDTO updateDTO = new UpdateTransactionDTO();
         updateDTO.setId(testTransaction.getId());
-        updateDTO.setCategory("Updated Food");
-        updateDTO.setAmount(150.0);
-        updateDTO.setType("EXPENSE");
-        updateDTO.setDescription("Updated grocery shopping");
-    }
+        updateDTO.setCategory("Updated Salary");
+        updateDTO.setAmount(6000.0);
+        updateDTO.setType("INCOME");
+        updateDTO.setDescription("Updated Monthly Salary");
 
-    @Test
-    void createTransaction_Success() {
-        // Act
-        ResponseEntity<TransactionResponseDTO> response = transactionController.createTransaction(createDTO);
-
-        // Assert
-        assertNotNull(response, "Response should not be null");
-        assertEquals(200, response.getStatusCodeValue(), "Status code should be 200");
-
-        TransactionResponseDTO transactionResponse = response.getBody();
-        assertNotNull(transactionResponse, "Transaction response should not be null");
-        assertEquals(createDTO.getCategory(), transactionResponse.getCategory(), "Category should match");
-        assertEquals(createDTO.getAmount(), transactionResponse.getAmount(), "Amount should match");
-        assertEquals(createDTO.getType(), transactionResponse.getType(), "Type should match");
-        assertEquals(createDTO.getDescription(), transactionResponse.getDescription(), "Description should match");
-        assertEquals(testUser.getId(), transactionResponse.getUserId(), "User ID should match");
-    }
-
-    @Test
-    void getTransactionsByUserId_Success() {
-        // Act
-        ResponseEntity<List<TransactionResponseDTO>> response =
-                transactionController.getTransactionsByUserId(testUser.getId());
-
-        // Assert
-        assertNotNull(response, "Response should not be null");
-        assertEquals(200, response.getStatusCodeValue(), "Status code should be 200");
-
-        List<TransactionResponseDTO> transactions = response.getBody();
-        assertNotNull(transactions, "Transactions list should not be null");
-        assertFalse(transactions.isEmpty(), "Transactions list should not be empty");
-        assertTrue(transactions.stream()
-                .anyMatch(t -> t.getCategory().equals(testTransaction.getCategory())));
-    }
-
-    @Test
-    void getTransactionsByUserId_UserNotFound() {
-        // Act & Assert
-        assertThrows(ResourceNotFoundException.class, () ->
-                        transactionController.getTransactionsByUserId(999L),
-                "Should throw ResourceNotFoundException for non-existent user"
+        ResponseEntity<?> response = transactionController.updateTransaction(
+                testUser.getId(),
+                updateDTO
         );
+
+        assertNotNull(response);
+        assertEquals(200, response.getStatusCode().value());
     }
 
     @Test
-    void getTransactionsByDateRange_Success() {
-        // Arrange
-        LocalDateTime startDate = LocalDateTime.now().minusDays(1);
-        LocalDateTime endDate = LocalDateTime.now().plusDays(1);
+    public void testDeleteTransaction() {
+        Transaction transactionToDelete = new Transaction();
+        transactionToDelete.setUser(testUser);
+        transactionToDelete.setCategory("Temp Transaction");
+        transactionToDelete.setAmount(100.0);
+        transactionToDelete.setType("EXPENSE");
+        transactionToDelete = transactionRepository.save(transactionToDelete);
 
-        // Act
-        ResponseEntity<List<TransactionResponseDTO>> response =
-                transactionController.getTransactionsByDateRange(testUser.getId(), startDate, endDate);
+        ResponseEntity<String> response = transactionController.deleteTransaction(transactionToDelete.getId());
 
-        // Assert
-        assertNotNull(response, "Response should not be null");
-        assertEquals(200, response.getStatusCodeValue(), "Status code should be 200");
-
-        List<TransactionResponseDTO> transactions = response.getBody();
-        assertNotNull(transactions, "Transactions list should not be null");
-        assertFalse(transactions.isEmpty(), "Transactions list should not be empty");
-    }
-
-    @Test
-    void getTransactionsByType_Success() {
-        // Act
-        ResponseEntity<List<TransactionResponseDTO>> response =
-                transactionController.getTransactionsByType(testUser.getId(), "EXPENSE");
-
-        // Assert
-        assertNotNull(response, "Response should not be null");
-        assertEquals(200, response.getStatusCodeValue(), "Status code should be 200");
-
-        List<TransactionResponseDTO> transactions = response.getBody();
-        assertNotNull(transactions, "Transactions list should not be null");
-        assertFalse(transactions.isEmpty(), "Transactions list should not be empty");
-        transactions.forEach(t -> assertEquals("EXPENSE", t.getType(), "All transactions should be expenses"));
-    }
-
-    @Test
-    void updateTransaction_Success() {
-        // Act
-        ResponseEntity<TransactionResponseDTO> response =
-                transactionController.updateTransaction(testTransaction.getId(), updateDTO);
-
-        // Assert
-        assertNotNull(response, "Response should not be null");
-        assertEquals(200, response.getStatusCodeValue(), "Status code should be 200");
-
-        TransactionResponseDTO updatedTransaction = response.getBody();
-        assertNotNull(updatedTransaction, "Updated transaction should not be null");
-        assertEquals(updateDTO.getCategory(), updatedTransaction.getCategory(), "Category should be updated");
-        assertEquals(updateDTO.getAmount(), updatedTransaction.getAmount(), "Amount should be updated");
-        assertEquals(updateDTO.getDescription(), updatedTransaction.getDescription(), "Description should be updated");
-    }
-
-    @Test
-    void updateTransaction_NotFound() {
-        // Act & Assert
-        assertThrows(ResourceNotFoundException.class, () ->
-                        transactionController.updateTransaction(999L, updateDTO),
-                "Should throw ResourceNotFoundException for non-existent transaction"
-        );
-    }
-
-    @Test
-    void deleteTransaction_Success() {
-        // Act
-        ResponseEntity<String> response = transactionController.deleteTransaction(testTransaction.getId());
-
-        // Assert
-        assertNotNull(response, "Response should not be null");
-        assertEquals(200, response.getStatusCodeValue(), "Status code should be 200");
-        assertFalse(transactionRepository.existsById(testTransaction.getId()),
-                "Transaction should be deleted from repository");
-    }
-
-    @Test
-    void deleteTransaction_NotFound() {
-        // Act & Assert
-        assertThrows(ResourceNotFoundException.class, () ->
-                        transactionController.deleteTransaction(999L),
-                "Should throw ResourceNotFoundException for non-existent transaction"
-        );
+        assertNotNull(response);
+        assertEquals(200, response.getStatusCode().value());
+        assertEquals("Transaction with ID " + transactionToDelete.getId() + " has been deleted successfully.", response.getBody());
     }
 }

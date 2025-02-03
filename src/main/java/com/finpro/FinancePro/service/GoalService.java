@@ -30,6 +30,12 @@ public class GoalService {
     @Autowired
     private BudgetService budgetService;
 
+    public boolean isUserAuthorizedForGoal(Long goalId, Long userId) {
+        Goal goal = goalRepository.findById(goalId)
+                .orElseThrow(() -> new ResourceNotFoundException("Goal not found with ID: " + goalId));
+        return goal.getUser().getId().equals(userId);
+    }
+
     private double calculateCurrentAmount(Long userId) {
         // Get income sum from transactions
         double incomeSum = transactionService.calculateIncomeSum(userId);
@@ -40,14 +46,15 @@ public class GoalService {
         return incomeSum + remainingBudget;
     }
 
-    public GoalResponseDTO createGoal(CreateGoalDTO createGoalDTO) {
-        User user = userRepository.findById(createGoalDTO.getUserId())
-                .orElseThrow(() -> new ResourceNotFoundException("User not found with ID " + createGoalDTO.getUserId()));
+    // Update this method in your GoalService class
+    public GoalResponseDTO createGoal(CreateGoalDTO createGoalDTO, Long userId) {
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new ResourceNotFoundException("User not found with ID " + userId));
 
         // Check if a goal already exists for the user
-        Optional<Goal> existingGoal = goalRepository.findByUserId(user.getId());
+        Optional<Goal> existingGoal = goalRepository.findByUserId(userId);
         if (existingGoal.isPresent()) {
-            throw new InvalidRequestException("A goal already exists for user ID " + createGoalDTO.getUserId());
+            throw new InvalidRequestException("A goal already exists for user ID " + userId);
         }
 
         Goal goal = new Goal();

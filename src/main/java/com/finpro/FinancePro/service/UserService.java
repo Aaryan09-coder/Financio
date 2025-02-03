@@ -6,9 +6,12 @@ import com.finpro.FinancePro.dto.Response.UserResponseDTO;
 import com.finpro.FinancePro.entity.User;
 import com.finpro.FinancePro.exception.ResourceNotFoundException;
 import com.finpro.FinancePro.repository.UserRepository;
+import com.finpro.FinancePro.security.SecurityUtils;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
+
 
 @Service
 public class UserService {
@@ -31,6 +34,11 @@ public class UserService {
     }
 
     public UserResponseDTO updateUser(UpdateUserDTO updateDTO) {
+
+        if (!SecurityUtils.isCurrentUserOrAdmin(updateDTO.getId())) {
+            throw new AccessDeniedException("You are not authorized to update this user's data");
+        }
+
         User user = userRepository.findById(updateDTO.getId())
                 .orElseThrow(() -> new ResourceNotFoundException("User not found with ID: " + updateDTO.getId()));
 
@@ -52,12 +60,20 @@ public class UserService {
     }
 
     public UserResponseDTO getUser(Long id) {
+        if (!SecurityUtils.isCurrentUserOrAdmin(id)) {
+            throw new AccessDeniedException("You are not authorized to access this user's data");
+        }
+
         User user = userRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("User not found with ID: " + id));
         return convertToResponseDTO(user);
     }
 
     public void deleteUser(Long id) {
+        if (!SecurityUtils.isCurrentUserOrAdmin(id)) {
+            throw new AccessDeniedException("You are not authorized to delete this user");
+        }
+
         if (!userRepository.existsById(id)) {
             throw new ResourceNotFoundException("User not found with ID: " + id);
         }

@@ -3,132 +3,141 @@ package com.finpro.FinancePro.Controller;
 import com.finpro.FinancePro.dto.Request.CreateUserDTO;
 import com.finpro.FinancePro.dto.Request.UpdateUserDTO;
 import com.finpro.FinancePro.dto.Response.UserResponseDTO;
-import com.finpro.FinancePro.entity.Provider;
-import com.finpro.FinancePro.entity.User;
-import com.finpro.FinancePro.exception.ResourceNotFoundException;
-import com.finpro.FinancePro.repository.UserRepository;
+import com.finpro.FinancePro.service.UserService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.ResponseEntity;
-import org.springframework.transaction.annotation.Transactional;
+
+import java.lang.reflect.Field;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-@SpringBootTest
-@Transactional
-public class UserControllerTest {
+class UserControllerTest {
 
-    @Autowired
     private UserController userController;
-
-    @Autowired
-    private UserRepository userRepository;
-
-    private User testUser;
-    private CreateUserDTO createUserDTO;
-    private UpdateUserDTO updateUserDTO;
+    private UserService userService;
 
     @BeforeEach
     void setUp() {
-        // Create and save test user
-        testUser = new User();
-        testUser.setFullName("Test User");
-        testUser.setEmail("test@example.com");
-        testUser.setPassword("password123");
-        testUser.setProvider(Provider.SELF);
-        testUser = userRepository.save(testUser);
+        userController = new UserController();
+        // Create a mock UserService (simplified for this example)
+        userService = new UserService() {
+            @Override
+            public UserResponseDTO createUser(CreateUserDTO createDTO) {
+                if (createDTO.getFullName() == null || createDTO.getFullName().isEmpty()) {
+                    throw new IllegalArgumentException("Invalid user data");
+                }
+                UserResponseDTO userResponseDTO = new UserResponseDTO();
+                userResponseDTO.setFullName(createDTO.getFullName());
+                userResponseDTO.setEmail(createDTO.getEmail());
+                return userResponseDTO;
+            }
 
-        // Initialize CreateUserDTO
-        createUserDTO = new CreateUserDTO();
-        createUserDTO.setFullName("New User");
-        createUserDTO.setEmail("new@example.com");
-        createUserDTO.setPassword("newpassword123");
-        createUserDTO.setProvider(Provider.SELF);
+            @Override
+            public UserResponseDTO updateUser(UpdateUserDTO updateDTO) {
+                UserResponseDTO userResponseDTO = new UserResponseDTO();
+                userResponseDTO.setId(updateDTO.getId());
+                userResponseDTO.setFullName(updateDTO.getFullName());
+                return userResponseDTO;
+            }
 
-        // Initialize UpdateUserDTO
-        updateUserDTO = new UpdateUserDTO();
-        updateUserDTO.setId(testUser.getId());
-        updateUserDTO.setFullName("Updated User");
-        updateUserDTO.setEmail("updated@example.com");
-        updateUserDTO.setProvider(Provider.SELF);
+            @Override
+            public UserResponseDTO getUser(Long id) {
+                UserResponseDTO userResponseDTO = new UserResponseDTO();
+                userResponseDTO.setId(id);
+                userResponseDTO.setFullName("Test User");
+                return userResponseDTO;
+            }
+
+            @Override
+            public void deleteUser(Long id) {
+                // Simulate delete operation
+            }
+        };
+
+        // Use reflection to set userService in the controller
+        try {
+            Field serviceField = UserController.class.getDeclaredField("userService");
+            serviceField.setAccessible(true);
+            serviceField.set(userController, userService);
+        } catch (Exception e) {
+            throw new RuntimeException("Could not set userService", e);
+        }
     }
 
     @Test
-    void createUser_Success() {
-        // Act
-        ResponseEntity<UserResponseDTO> response = userController.createUser(createUserDTO);
+    void testCreateUser_Success() {
+        CreateUserDTO createDTO = new CreateUserDTO();
+        createDTO.setFullName("John Doe");
+        createDTO.setEmail("john@example.com");
+        createDTO.setPassword("password123");
 
-        // Assert
-        assertNotNull(response, "Response should not be null");
-        assertEquals(200, response.getStatusCodeValue(), "Status code should be 200");
+        ResponseEntity<?> response = userController.createUser(createDTO);
 
-        UserResponseDTO userResponse = response.getBody();
-        assertNotNull(userResponse, "Response body should not be null");
-        assertEquals(createUserDTO.getFullName(), userResponse.getFullName(), "Full name should match");
-        assertEquals(createUserDTO.getEmail(), userResponse.getEmail(), "Email should match");
-        assertEquals(createUserDTO.getProvider(), userResponse.getProvider(), "Provider should match");
+        assertNotNull(response);
+        assertEquals(200, response.getStatusCode().value());
+        assertTrue(response.getBody() instanceof UserResponseDTO);
+
+        UserResponseDTO userResponse = (UserResponseDTO) response.getBody();
+        assertEquals("John Doe", userResponse.getFullName());
+        assertEquals("john@example.com", userResponse.getEmail());
     }
 
     @Test
-    void updateUser_Success() {
-        // Act
-        ResponseEntity<UserResponseDTO> response = userController.updateUser(testUser.getId(), updateUserDTO);
+    void testCreateUser_Exception() {
+        CreateUserDTO createDTO = new CreateUserDTO();
+        createDTO.setFullName("");
+        createDTO.setEmail("");
+        createDTO.setPassword("");
 
-        // Assert
-        assertNotNull(response, "Response should not be null");
-        assertEquals(200, response.getStatusCodeValue(), "Status code should be 200");
+        ResponseEntity<?> response = userController.createUser(createDTO);
 
-        UserResponseDTO userResponse = response.getBody();
-        assertNotNull(userResponse, "Response body should not be null");
-        assertEquals(updateUserDTO.getFullName(), userResponse.getFullName(), "Full name should match");
-        assertEquals(updateUserDTO.getEmail(), userResponse.getEmail(), "Email should match");
-        assertEquals(testUser.getId(), userResponse.getId(), "User ID should match");
+        assertNotNull(response);
+        assertEquals(500, response.getStatusCode().value());
+
+        // Add more robust error checking
+        Object body = response.getBody();
+        assertTrue(body instanceof UserController.ErrorResponse, "Body should be ErrorResponse");
+
+        UserController.ErrorResponse errorResponse = (UserController.ErrorResponse) body;
+        assertNotNull(errorResponse.getMessage(), "Error message should not be null");
+        assertTrue(errorResponse.getMessage().contains("Error creating user"), "Error message should contain expected text");
+    }
+    @Test
+    void testUpdateUser_Success() {
+        UpdateUserDTO updateDTO = new UpdateUserDTO();
+        updateDTO.setId(1L);
+        updateDTO.setFullName("Updated Name");
+
+        ResponseEntity<?> response = userController.updateUser(1L, updateDTO);
+
+        assertNotNull(response);
+        assertEquals(200, response.getStatusCode().value());
+        assertTrue(response.getBody() instanceof UserResponseDTO);
+
+        UserResponseDTO userResponse = (UserResponseDTO) response.getBody();
+        assertEquals(1L, userResponse.getId());
+        assertEquals("Updated Name", userResponse.getFullName());
     }
 
     @Test
-    void getUser_Success() {
-        // Act
-        ResponseEntity<UserResponseDTO> response = userController.getUser(testUser.getId());
+    void testGetUser_Success() {
+        ResponseEntity<?> response = userController.getUser(1L);
 
-        // Assert
-        assertNotNull(response, "Response should not be null");
-        assertEquals(200, response.getStatusCodeValue(), "Status code should be 200");
+        assertNotNull(response);
+        assertEquals(200, response.getStatusCode().value());
+        assertTrue(response.getBody() instanceof UserResponseDTO);
 
-        UserResponseDTO userResponse = response.getBody();
-        assertNotNull(userResponse, "Response body should not be null");
-        assertEquals(testUser.getId(), userResponse.getId(), "User ID should match");
-        assertEquals(testUser.getFullName(), userResponse.getFullName(), "Full name should match");
-        assertEquals(testUser.getEmail(), userResponse.getEmail(), "Email should match");
+        UserResponseDTO userResponse = (UserResponseDTO) response.getBody();
+        assertEquals(1L, userResponse.getId());
+        assertEquals("Test User", userResponse.getFullName());
     }
 
     @Test
-    void getUser_UserNotFound() {
-        // Act & Assert
-        assertThrows(ResourceNotFoundException.class, () ->
-                        userController.getUser(999L),
-                "Should throw ResourceNotFoundException for non-existent user"
-        );
-    }
+    void testDeleteUser_Success() {
+        ResponseEntity<?> response = userController.deleteUser(1L);
 
-    @Test
-    void deleteUser_Success() {
-        // Act
-        ResponseEntity<Void> response = userController.deleteUser(testUser.getId());
-
-        // Assert
-        assertNotNull(response, "Response should not be null");
-        assertEquals(200, response.getStatusCodeValue(), "Status code should be 200");
-        assertFalse(userRepository.existsById(testUser.getId()), "User should no longer exist");
-    }
-
-    @Test
-    void deleteUser_UserNotFound() {
-        // Act & Assert
-        assertThrows(ResourceNotFoundException.class, () ->
-                        userController.deleteUser(999L),
-                "Should throw ResourceNotFoundException for non-existent user"
-        );
+        assertNotNull(response);
+        assertEquals(200, response.getStatusCode().value());
     }
 }

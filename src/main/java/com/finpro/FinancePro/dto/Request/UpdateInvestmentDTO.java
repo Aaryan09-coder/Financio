@@ -1,8 +1,11 @@
 package com.finpro.FinancePro.dto.Request;
 
+import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Positive;
 
 public class UpdateInvestmentDTO {
+    @NotNull(message = "Investment ID is required")
+    private Long investmentId;
 
     private String type;
 
@@ -44,5 +47,13 @@ public class UpdateInvestmentDTO {
 
     public void setPurchasePrice(@Positive(message = "Purchase price must be positive") Double purchasePrice) {
         this.purchasePrice = purchasePrice;
+    }
+
+    public @NotNull(message = "Investment ID is required") Long getInvestmentId() {
+        return investmentId;
+    }
+
+    public void setInvestmentId(@NotNull(message = "Investment ID is required") Long investmentId) {
+        this.investmentId = investmentId;
     }
 }

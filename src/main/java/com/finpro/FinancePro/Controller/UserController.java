@@ -5,41 +5,87 @@ import com.finpro.FinancePro.dto.Request.UpdateUserDTO;
 import com.finpro.FinancePro.dto.Response.UserResponseDTO;
 import com.finpro.FinancePro.service.UserService;
 import jakarta.validation.Valid;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
 @RequestMapping("/users")
+@CrossOrigin(origins = "*") // Be more specific in production
 public class UserController {
+
+    private static final Logger logger = LoggerFactory.getLogger(UserController.class);
 
     @Autowired
     private UserService userService;
 
     @PostMapping
-    public ResponseEntity<UserResponseDTO> createUser(@Valid @RequestBody CreateUserDTO createDTO) {
-        UserResponseDTO user = userService.createUser(createDTO);
-        return ResponseEntity.ok(user);
+    public ResponseEntity<?> createUser(@Valid @RequestBody CreateUserDTO createDTO) {
+        try {
+            UserResponseDTO user = userService.createUser(createDTO);
+            return ResponseEntity.ok(user);
+        } catch (Exception e) {
+            logger.error("Error creating user: ", e);
+            return ResponseEntity
+                    .internalServerError()
+                    .body(new ErrorResponse("Error creating user: " + e.getMessage()));
+        }
     }
 
     @PutMapping("/{id}")
-    public ResponseEntity<UserResponseDTO> updateUser(
+    public ResponseEntity<?> updateUser(
             @PathVariable Long id,
             @Valid @RequestBody UpdateUserDTO updateDTO) {
-        updateDTO.setId(id);
-        UserResponseDTO user = userService.updateUser(updateDTO);
-        return ResponseEntity.ok(user);
+        try {
+            updateDTO.setId(id);
+            UserResponseDTO user = userService.updateUser(updateDTO);
+            return ResponseEntity.ok(user);
+        } catch (Exception e) {
+            logger.error("Error updating user: ", e);
+            return ResponseEntity
+                    .internalServerError()
+                    .body(new ErrorResponse("Error updating user: " + e.getMessage()));
+        }
     }
 
     @GetMapping("/{id}")
-    public ResponseEntity<UserResponseDTO> getUser(@PathVariable Long id) {
-        UserResponseDTO user = userService.getUser(id);
-        return ResponseEntity.ok(user);
+    public ResponseEntity<?> getUser(@PathVariable Long id) {
+        try {
+            UserResponseDTO user = userService.getUser(id);
+            return ResponseEntity.ok(user);
+        } catch (Exception e) {
+            logger.error("Error fetching user: ", e);
+            return ResponseEntity
+                    .internalServerError()
+                    .body(new ErrorResponse("Error fetching user: " + e.getMessage()));
+        }
     }
 
     @DeleteMapping("/{id}")
-    public ResponseEntity<Void> deleteUser(@PathVariable Long id) {
-        userService.deleteUser(id);
-        return ResponseEntity.ok().build();
+    public ResponseEntity<?> deleteUser(@PathVariable Long id) {
+        try {
+            userService.deleteUser(id);
+            return ResponseEntity.ok().build();
+        } catch (Exception e) {
+            logger.error("Error deleting user: ", e);
+            return ResponseEntity
+                    .internalServerError()
+                    .body(new ErrorResponse("Error deleting user: " + e.getMessage()));
+        }
+    }
+
+    // Error response class
+    public static class ErrorResponse {
+        private final String message;
+
+        public ErrorResponse(String message) {
+            this.message = message;
+        }
+
+        public String getMessage() {
+            return message;
+        }
     }
 }

@@ -4,180 +4,211 @@ import com.finpro.FinancePro.dto.Request.CreateGoalDTO;
 import com.finpro.FinancePro.dto.Request.UpdateGoalDTO;
 import com.finpro.FinancePro.dto.Response.GoalProgressDTO;
 import com.finpro.FinancePro.dto.Response.GoalResponseDTO;
-import com.finpro.FinancePro.entity.Budget;
-import com.finpro.FinancePro.entity.User;
-import com.finpro.FinancePro.exception.ResourceNotFoundException;
-import com.finpro.FinancePro.exception.InvalidRequestException;
-import com.finpro.FinancePro.repository.BudgetRepository;
-import com.finpro.FinancePro.repository.UserRepository;
+import com.finpro.FinancePro.exception.CustomAccessDeniedException;
+import com.finpro.FinancePro.security.SecurityUtils;
+import com.finpro.FinancePro.service.GoalService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.SpringBootTest;
+import org.mockito.InjectMocks;
+import org.mockito.Mock;
+import org.mockito.MockitoAnnotations;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.transaction.annotation.Transactional;
 
 import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.Mockito.*;
 
-@SpringBootTest
-@Transactional
 public class GoalControllerTest {
 
-    @Autowired
+    @Mock
+    private GoalService goalService;
+
+    @InjectMocks
     private GoalController goalController;
 
-    @Autowired
-    private UserRepository userRepository;
-
-    @Autowired
-    private BudgetRepository budgetRepository;
-
-    private User testUser;
-    private CreateGoalDTO createDTO;
-    private UpdateGoalDTO updateDTO;
+    private CreateGoalDTO createGoalDTO;
+    private UpdateGoalDTO updateGoalDTO;
+    private GoalResponseDTO goalResponseDTO;
+    private GoalProgressDTO goalProgressDTO;
 
     @BeforeEach
-    void setUp() {
-        // Create and save test user
-        testUser = new User();
-        testUser.setFullName("Test User");
-        testUser.setEmail("test@example.com");
-        testUser.setPassword("password123");
-        testUser = userRepository.save(testUser);
+    public void setUp() {
+        MockitoAnnotations.openMocks(this);
 
-        // Create and save test budget (required for goal calculations)
-        Budget testBudget = new Budget();
-        testBudget.setUser(testUser);
-        testBudget.setTotalAmount(1000.0);
-        testBudget.setSpentAmount(0.0);
-        testBudget.setPeriod("Monthly");
-        budgetRepository.save(testBudget);
+        // Initialize test data
+        createGoalDTO = new CreateGoalDTO();
+        createGoalDTO.setName("Save for Vacation");
+        createGoalDTO.setTargetAmount(5000.00);
 
-        // Setup create DTO
-        createDTO = new CreateGoalDTO();
-        createDTO.setUserId(testUser.getId());
-        createDTO.setName("Save for Car");
-        createDTO.setTargetAmount(10000.0);
+        updateGoalDTO = new UpdateGoalDTO();
+        updateGoalDTO.setId(1L);
+        updateGoalDTO.setTargetAmount(6000.00); // Only targetAmount is updated
 
-        // Setup update DTO
-        updateDTO = new UpdateGoalDTO();
-        updateDTO.setTargetAmount(15000.0);
+        goalResponseDTO = new GoalResponseDTO();
+        goalResponseDTO.setId(1L);
+        goalResponseDTO.setName("Save for Vacation");
+        goalResponseDTO.setTargetAmount(5000.00);
+        goalResponseDTO.setCurrentAmount(2000.00);
+
+        goalProgressDTO = new GoalProgressDTO();
+        goalProgressDTO.setTargetAmount(5000.00);
+        goalProgressDTO.setCurrentAmount(2000.00);
+        goalProgressDTO.setDifference(3000.00);
+        goalProgressDTO.setStatus("BEHIND");
+        goalProgressDTO.setProgressPercentage(40.0);
     }
 
     @Test
-    void testCreateGoal_Success() {
-        // Act
-        ResponseEntity<GoalResponseDTO> response = goalController.createGoal(createDTO);
+    public void testCreateGoal_Success() {
+        // Simulate authenticated user
+        SecurityUtils.setTestUserId(1L);
 
-        // Assert
-        assertTrue(response.getStatusCode().is2xxSuccessful());
+        // Mock service behavior
+        when(goalService.createGoal(createGoalDTO, 1L)).thenReturn(goalResponseDTO);
+
+        // Call the controller method
+        ResponseEntity<GoalResponseDTO> response = goalController.createGoal(createGoalDTO);
+
+        // Verify the response
+        assertEquals(HttpStatus.OK, response.getStatusCode());
         assertNotNull(response.getBody());
-        assertEquals(createDTO.getName(), response.getBody().getName());
-        assertEquals(createDTO.getTargetAmount(), response.getBody().getTargetAmount());
-        assertEquals(0.0, response.getBody().getCurrentAmount());
-        assertNotNull(response.getBody().getCreatedAt());
-        assertNotNull(response.getBody().getUpdatedAt());
+        assertEquals(goalResponseDTO.getId(), response.getBody().getId());
+        assertEquals(goalResponseDTO.getName(), response.getBody().getName());
+
+        // Verify service interaction
+        verify(goalService, times(1)).createGoal(createGoalDTO, 1L);
     }
 
     @Test
-    void testCreateGoal_InvalidUser() {
-        // Arrange
-        createDTO.setUserId(999L); // Non-existent user ID
+    public void testCreateGoal_Unauthorized() {
+        // Simulate unauthenticated user
+        SecurityUtils.setTestUserId(null);
 
-        // Act & Assert
-        assertThrows(ResourceNotFoundException.class, () -> {
-            goalController.createGoal(createDTO);
+        // Verify that an exception is thrown
+        CustomAccessDeniedException exception = assertThrows(CustomAccessDeniedException.class, () -> {
+            goalController.createGoal(createGoalDTO);
         });
+
+        assertEquals("User must be authenticated", exception.getMessage());
+
+        // Verify no service interaction
+        verify(goalService, never()).createGoal(any(), any());
     }
 
     @Test
-    void testCreateGoal_DuplicateGoal() {
-        // Arrange
-        goalController.createGoal(createDTO); // Create first goal
+    public void testUpdateGoal_Success() {
+        // Simulate authenticated user
+        SecurityUtils.setTestUserId(1L);
 
-        // Act & Assert
-        assertThrows(InvalidRequestException.class, () -> {
-            goalController.createGoal(createDTO); // Attempt to create second goal
-        });
-    }
+        // Mock service behavior
+        when(goalService.isUserAuthorizedForGoal(1L, 1L)).thenReturn(true);
+        when(goalService.updateGoal(updateGoalDTO)).thenReturn(goalResponseDTO);
 
-    @Test
-    void testUpdateGoal_Success() {
-        // Arrange
-        ResponseEntity<GoalResponseDTO> created = goalController.createGoal(createDTO);
-        updateDTO.setId(created.getBody().getId());
+        // Call the controller method
+        ResponseEntity<GoalResponseDTO> response = goalController.updateGoal(1L, updateGoalDTO);
 
-        // Act
-        ResponseEntity<GoalResponseDTO> response = goalController.updateGoal(updateDTO);
-
-        // Assert
-        assertTrue(response.getStatusCode().is2xxSuccessful());
+        // Verify the response
+        assertEquals(HttpStatus.OK, response.getStatusCode());
         assertNotNull(response.getBody());
-        assertEquals(updateDTO.getTargetAmount(), response.getBody().getTargetAmount());
-        assertEquals(created.getBody().getName(), response.getBody().getName());
+        assertEquals(goalResponseDTO.getId(), response.getBody().getId());
+        assertEquals(goalResponseDTO.getTargetAmount(), response.getBody().getTargetAmount());
+
+        // Verify service interaction
+        verify(goalService, times(1)).isUserAuthorizedForGoal(1L, 1L);
+        verify(goalService, times(1)).updateGoal(updateGoalDTO);
     }
 
     @Test
-    void testUpdateGoal_NotFound() {
-        // Arrange
-        updateDTO.setId(999L); // Non-existent goal ID
+    public void testUpdateGoal_Unauthorized() {
+        // Simulate unauthorized user
+        SecurityUtils.setTestUserId(2L);
 
-        // Act & Assert
-        assertThrows(ResourceNotFoundException.class, () -> {
-            goalController.updateGoal(updateDTO);
+        // Mock service behavior
+        when(goalService.isUserAuthorizedForGoal(1L, 2L)).thenReturn(false);
+
+        // Verify that an exception is thrown
+        CustomAccessDeniedException exception = assertThrows(CustomAccessDeniedException.class, () -> {
+            goalController.updateGoal(1L, updateGoalDTO);
         });
+
+        assertEquals("You are not authorized to update this goal", exception.getMessage());
+
+        // Verify service interaction
+        verify(goalService, times(1)).isUserAuthorizedForGoal(1L, 2L);
+        verify(goalService, never()).updateGoal(any());
     }
 
     @Test
-    void testGetGoalByUserId_Success() {
-        // Arrange
-        goalController.createGoal(createDTO);
+    public void testGetCurrentUserGoal_Success() {
+        // Simulate authenticated user
+        SecurityUtils.setTestUserId(1L);
 
-        // Act
-        ResponseEntity<GoalResponseDTO> response = goalController.getGoalByUserId(testUser.getId());
+        // Mock service behavior
+        when(goalService.getGoalByUserId(1L)).thenReturn(goalResponseDTO);
 
-        // Assert
-        assertTrue(response.getStatusCode().is2xxSuccessful());
+        // Call the controller method
+        ResponseEntity<GoalResponseDTO> response = goalController.getCurrentUserGoal();
+
+        // Verify the response
+        assertEquals(HttpStatus.OK, response.getStatusCode());
         assertNotNull(response.getBody());
-        assertEquals(createDTO.getName(), response.getBody().getName());
-        assertEquals(createDTO.getTargetAmount(), response.getBody().getTargetAmount());
+        assertEquals(goalResponseDTO.getId(), response.getBody().getId());
+        assertEquals(goalResponseDTO.getName(), response.getBody().getName());
+
+        // Verify service interaction
+        verify(goalService, times(1)).getGoalByUserId(1L);
     }
 
     @Test
-    void testGetGoalByUserId_NotFound() {
-        // Act & Assert
-        assertThrows(ResourceNotFoundException.class, () -> {
-            goalController.getGoalByUserId(999L);
+    public void testGetCurrentUserGoal_Unauthorized() {
+        // Simulate unauthenticated user
+        SecurityUtils.setTestUserId(null);
+
+        // Verify that an exception is thrown
+        CustomAccessDeniedException exception = assertThrows(CustomAccessDeniedException.class, () -> {
+            goalController.getCurrentUserGoal();
         });
+
+        assertEquals("User must be authenticated", exception.getMessage());
+
+        // Verify no service interaction
+        verify(goalService, never()).getGoalByUserId(any());
     }
 
     @Test
-    void testGetGoalProgressByUserId_Success() {
-        // Arrange
-        goalController.createGoal(createDTO);
+    public void testGetCurrentUserGoalProgress_Success() {
+        // Simulate authenticated user
+        SecurityUtils.setTestUserId(1L);
 
-        // Act
-        ResponseEntity<GoalProgressDTO> response = goalController.getGoalProgressByUserId(testUser.getId());
+        // Mock service behavior
+        when(goalService.calculateGoalProgressByUserId(1L)).thenReturn(goalProgressDTO);
 
-        // Assert
-        assertTrue(response.getStatusCode().is2xxSuccessful());
+        // Call the controller method
+        ResponseEntity<GoalProgressDTO> response = goalController.getCurrentUserGoalProgress();
+
+        // Verify the response
+        assertEquals(HttpStatus.OK, response.getStatusCode());
         assertNotNull(response.getBody());
-        assertEquals(createDTO.getTargetAmount(), response.getBody().getTargetAmount());
-        assertNotNull(response.getBody().getCurrentAmount());
-        assertNotNull(response.getBody().getDifference());
-        assertNotNull(response.getBody().getStatus());
-        assertTrue(response.getBody().getProgressPercentage() >= 0);
+        assertEquals(goalProgressDTO.getTargetAmount(), response.getBody().getTargetAmount());
+        assertEquals(goalProgressDTO.getCurrentAmount(), response.getBody().getCurrentAmount());
 
-        // Verify status is either AHEAD or BEHIND
-        String status = response.getBody().getStatus();
-        assertTrue("AHEAD".equals(status) || "BEHIND".equals(status));
+        // Verify service interaction
+        verify(goalService, times(1)).calculateGoalProgressByUserId(1L);
     }
 
     @Test
-    void testGetGoalProgressByUserId_NotFound() {
-        // Act & Assert
-        assertThrows(ResourceNotFoundException.class, () -> {
-            goalController.getGoalProgressByUserId(999L);
+    public void testGetCurrentUserGoalProgress_Unauthorized() {
+        // Simulate unauthenticated user
+        SecurityUtils.setTestUserId(null);
+
+        // Verify that an exception is thrown
+        CustomAccessDeniedException exception = assertThrows(CustomAccessDeniedException.class, () -> {
+            goalController.getCurrentUserGoalProgress();
         });
+
+        assertEquals("User must be authenticated", exception.getMessage());
+
+        // Verify no service interaction
+        verify(goalService, never()).calculateGoalProgressByUserId(any());
     }
 }

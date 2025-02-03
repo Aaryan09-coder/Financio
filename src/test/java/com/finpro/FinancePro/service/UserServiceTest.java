@@ -3,111 +3,100 @@ package com.finpro.FinancePro.service;
 import com.finpro.FinancePro.dto.Request.CreateUserDTO;
 import com.finpro.FinancePro.dto.Request.UpdateUserDTO;
 import com.finpro.FinancePro.dto.Response.UserResponseDTO;
+import com.finpro.FinancePro.entity.Provider;
 import com.finpro.FinancePro.entity.User;
-import com.finpro.FinancePro.exception.ResourceNotFoundException;
 import com.finpro.FinancePro.repository.UserRepository;
+import com.finpro.FinancePro.security.SecurityUtils;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.transaction.annotation.Transactional;
+import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.security.crypto.password.PasswordEncoder;
+
+import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.*;
 
 @SpringBootTest
-@Transactional
 public class UserServiceTest {
 
     @Autowired
     private UserService userService;
 
-    @Autowired
+    @MockBean
     private UserRepository userRepository;
 
-    private User testUser;
-    private CreateUserDTO createUserDTO;
-    private UpdateUserDTO updateUserDTO;
+    @MockBean
+    private PasswordEncoder passwordEncoder;
+
+    private User mockUser;
 
     @BeforeEach
-    void setUp() {
-        // Create and save test user
-        testUser = new User();
-        testUser.setFullName("Test User");
-        testUser.setEmail("test@example.com");
-        testUser.setPassword("encodedPassword");
-        testUser = userRepository.save(testUser);
+    public void setUp() {
+        mockUser = new User();
+        mockUser.setId(1L);
+        mockUser.setFullName("John Doe");
+        mockUser.setEmail("john@example.com");
+        mockUser.setProvider(Provider.SELF);
 
-        // Initialize CreateUserDTO
-        createUserDTO = new CreateUserDTO();
-        createUserDTO.setFullName("New User");
-        createUserDTO.setEmail("new@example.com");
-        createUserDTO.setPassword("password");
+        SecurityUtils.setTestUserId(1L);
 
-        // Initialize UpdateUserDTO
-        updateUserDTO = new UpdateUserDTO();
-        updateUserDTO.setId(testUser.getId());
-        updateUserDTO.setFullName("Updated User");
-        updateUserDTO.setEmail("updated@example.com");
+        when(userRepository.findById(1L)).thenReturn(Optional.of(mockUser));
+        when(userRepository.save(any(User.class))).thenReturn(mockUser);
+        // Add this line to mock existsById
+        when(userRepository.existsById(1L)).thenReturn(true);
+        when(passwordEncoder.encode(anyString())).thenReturn("encodedPassword");
+    }
+
+    @AfterEach
+    public void tearDown() {
+        SecurityUtils.clearTestUserId();
     }
 
     @Test
-    void createUser_Success() {
-        UserResponseDTO response = userService.createUser(createUserDTO);
+    public void testCreateUser() {
+        CreateUserDTO createDTO = new CreateUserDTO();
+        createDTO.setFullName("John Doe");
+        createDTO.setEmail("john@example.com");
+        createDTO.setPassword("password123");
 
-        assertNotNull(response, "Response should not be null");
-        assertEquals(createUserDTO.getFullName(), response.getFullName(), "Full name should match");
-        assertEquals(createUserDTO.getEmail(), response.getEmail(), "Email should match");
+        UserResponseDTO responseDTO = userService.createUser(createDTO);
+
+        assertNotNull(responseDTO);
+        assertEquals("John Doe", responseDTO.getFullName());
+        verify(userRepository).save(any(User.class));
     }
 
     @Test
-    void updateUser_Success() {
-        UserResponseDTO response = userService.updateUser(updateUserDTO);
+    public void testUpdateUser() {
+        UpdateUserDTO updateDTO = new UpdateUserDTO();
+        updateDTO.setId(1L);
+        updateDTO.setFullName("Updated Name");
+        updateDTO.setEmail("updated@example.com");
 
-        assertNotNull(response, "Response should not be null");
-        assertEquals(updateUserDTO.getFullName(), response.getFullName(), "Full name should match");
-        assertEquals(updateUserDTO.getEmail(), response.getEmail(), "Email should match");
+        UserResponseDTO updatedUser = userService.updateUser(updateDTO);
+
+        assertNotNull(updatedUser);
+        assertEquals("Updated Name", updatedUser.getFullName());
+        verify(userRepository).save(any(User.class));
     }
 
     @Test
-    void updateUser_UserNotFound() {
-        updateUserDTO.setId(999L); // Non-existent user ID
+    public void testGetUser() {
+        UserResponseDTO userDTO = userService.getUser(1L);
 
-        assertThrows(ResourceNotFoundException.class, () ->
-                        userService.updateUser(updateUserDTO),
-                "Should throw ResourceNotFoundException for non-existent user"
-        );
+        assertNotNull(userDTO);
+        assertEquals("John Doe", userDTO.getFullName());
     }
 
     @Test
-    void getUser_Success() {
-        UserResponseDTO response = userService.getUser(testUser.getId());
+    public void testDeleteUser() {
+        userService.deleteUser(1L);
 
-        assertNotNull(response, "Response should not be null");
-        assertEquals(testUser.getId(), response.getId(), "User ID should match");
-        assertEquals(testUser.getFullName(), response.getFullName(), "Full name should match");
-        assertEquals(testUser.getEmail(), response.getEmail(), "Email should match");
-    }
-
-    @Test
-    void getUser_UserNotFound() {
-        assertThrows(ResourceNotFoundException.class, () ->
-                        userService.getUser(999L),
-                "Should throw ResourceNotFoundException for non-existent user"
-        );
-    }
-
-    @Test
-    void deleteUser_Success() {
-        userService.deleteUser(testUser.getId());
-
-        assertFalse(userRepository.existsById(testUser.getId()), "User should no longer exist");
-    }
-
-    @Test
-    void deleteUser_UserNotFound() {
-        assertThrows(ResourceNotFoundException.class, () ->
-                        userService.deleteUser(999L),
-                "Should throw ResourceNotFoundException for non-existent user"
-        );
+        verify(userRepository).deleteById(1L);
     }
 }

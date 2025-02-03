@@ -7,10 +7,16 @@ public class UpdateTransactionDTO {
     @NotNull(message = "Transaction ID is required")
     private Long id;
 
-    private String category; // Optional
-    private Double amount;   // Optional
-    private String type;     // Optional
-    private String description; // Optional
+    @NotNull(message = "Category is required")
+    private String category;
+
+    @NotNull(message = "Amount is required")
+    private Double amount;
+
+    @NotNull(message = "Type is required")
+    private String type;
+
+    private String description;
 
     public @NotNull(message = "Transaction ID is required") Long getId() {
         return id;
